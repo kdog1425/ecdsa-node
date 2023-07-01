@@ -1,36 +1,56 @@
-const express = require("express");
+import { secp256k1 } from "ethereum-cryptography/secp256k1.js";
+import { keccak256 } from "ethereumjs-util";
+import express from "express";
+import cors from "cors";
+import { balances, findUserByPublicKey } from "./users.js";
+
 const app = express();
-const cors = require("cors");
 const port = 3042;
 
 app.use(cors());
 app.use(express.json());
 
-const balances = {
-  "0x1": 100,
-  "0x2": 50,
-  "0x3": 75,
-};
-
 app.get("/balance/:address", (req, res) => {
   const { address } = req.params;
-  const balance = balances[address] || 0;
+  const user = findUserByPublicKey(address);
+  if (!user) {
+    console.log("user not found");
+    res.status(400).send({ message: "No such address!" });
+    return;
+  }
+  const balance = balances[user] || 0;
   res.send({ balance });
 });
 
 app.post("/send", (req, res) => {
-  const { sender, recipient, amount } = req.body;
-
+  // TODO:
+  // 1. get a signature from the client side
+  // 2. recvoer the public address from the signature.
+  const { sender, payload, recipient } = req.body;
+  const { amount } = JSON.parse(payload.message);
   setInitialBalance(sender);
   setInitialBalance(recipient);
 
-  if (balances[sender] < amount) {
+  if (balances[findUserByPublicKey(sender)] < amount) {
     res.status(400).send({ message: "Not enough funds!" });
-  } else {
-    balances[sender] -= amount;
-    balances[recipient] += amount;
-    res.send({ balance: balances[sender] });
+    return;
   }
+  const signature = recover(payload.sig);
+  if (!verifySecp256k1Signature(sender, payload.message, signature)) {
+    res.status(400).send({ message: "Could not verify signature!" });
+    return;
+  }
+  const senderUser = findUserByPublicKey(sender);
+  const recipientUser = findUserByPublicKey(recipient);
+  console.log({
+    senderUser,
+    recipientUser,
+    payload,
+    amount,
+  });
+  balances[senderUser] -= amount;
+  balances[recipientUser] += amount;
+  res.send({ balance: balances[senderUser] });
 });
 
 app.listen(port, () => {
@@ -42,3 +62,23 @@ function setInitialBalance(address) {
     balances[address] = 0;
   }
 }
+
+function verifySecp256k1Signature(publicKey, data, sig) {
+  publicKey = publicKey.startsWith("0x") ? publicKey.slice(2) : publicKey;
+  return secp256k1.verify(
+    Buffer.concat([sig.r, sig.s]).toString("hex"),
+    keccak256(Buffer.from(data)),
+    publicKey
+  );
+}
+
+const recover = (compactHex) => {
+  // Decode the compact hexadecimal string
+  const signature = Buffer.from(compactHex, "hex");
+
+  // Recover the signature components
+  const r = signature.slice(0, 32);
+  const s = signature.slice(32, 64);
+  const v = signature[64];
+  return { r, s, v };
+};

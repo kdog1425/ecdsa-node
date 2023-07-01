@@ -1,5 +1,7 @@
 import { useState } from "react";
 import server from "./server";
+import { createPayload } from "./utils";
+import { publicToPrivateKeys } from "./keys";
 
 function Transfer({ address, setBalance }) {
   const [sendAmount, setSendAmount] = useState("");
@@ -9,13 +11,18 @@ function Transfer({ address, setBalance }) {
 
   async function transfer(evt) {
     evt.preventDefault();
-
+    const payload = createPayload(
+      publicToPrivateKeys[address],
+      parseInt(sendAmount),
+      address,
+      recipient
+    );
     try {
       const {
         data: { balance },
       } = await server.post(`send`, {
         sender: address,
-        amount: parseInt(sendAmount),
+        payload,
         recipient,
       });
       setBalance(balance);
@@ -25,13 +32,13 @@ function Transfer({ address, setBalance }) {
   }
 
   return (
-    <form className="container transfer" onSubmit={transfer}>
+    <form className='container transfer' onSubmit={transfer}>
       <h1>Send Transaction</h1>
 
       <label>
         Send Amount
         <input
-          placeholder="1, 2, 3..."
+          placeholder='1, 2, 3...'
           value={sendAmount}
           onChange={setValue(setSendAmount)}
         ></input>
@@ -40,13 +47,13 @@ function Transfer({ address, setBalance }) {
       <label>
         Recipient
         <input
-          placeholder="Type an address, for example: 0x2"
+          placeholder='Type an address, for example: 0x2'
           value={recipient}
           onChange={setValue(setRecipient)}
         ></input>
       </label>
 
-      <input type="submit" className="button" value="Transfer" />
+      <input type='submit' className='button' value='Transfer' />
     </form>
   );
 }
